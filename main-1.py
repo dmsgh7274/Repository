@@ -42,7 +42,6 @@ def to_cwt(one_window, wavelet='morl'):
     maps.append((maps[0] + maps[1]) / 2)
     return np.stack(maps).astype(np.float32)
 
-
 print("데이터 처리 중... ")
 files = sorted(glob.glob('data/**/*.csv', recursive=True))
 unique_users = sorted(list(set(os.path.basename(os.path.dirname(f)) for f in files)))
@@ -65,13 +64,11 @@ Xtr, ytr = build(tr_files)
 Xte, yte = build(te_files)
 
 BATCH_SIZE = 4 
-
 EPOCHS = 3
 
 train_loader = DataLoader(TensorDataset(torch.tensor(Xtr), torch.tensor(ytr, dtype=torch.long)), batch_size=BATCH_SIZE, shuffle=True)
 test_loader = DataLoader(TensorDataset(torch.tensor(Xte), torch.tensor(yte, dtype=torch.long)), batch_size=BATCH_SIZE, shuffle=False)
 dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 def get_2dcnn():
     return nn.Sequential(
@@ -92,13 +89,10 @@ def train_and_evaluate(model, name, tr_loader, te_loader):
     print(f"\n[{name}] 모델 학습 및 평가 시작...")
     model = model.to(dev)
     
-
     params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     crit = nn.CrossEntropyLoss()
     
-
     t0 = time.time()
     model.train()
     for epoch in range(EPOCHS):
@@ -108,7 +102,6 @@ def train_and_evaluate(model, name, tr_loader, te_loader):
             opt.zero_grad(); loss.backward(); opt.step()
     train_time = time.time() - t0
     
-
     model.eval()
     xb = next(iter(te_loader))[0][:1].to(dev) 
     with torch.no_grad():
@@ -119,7 +112,6 @@ def train_and_evaluate(model, name, tr_loader, te_loader):
         if dev == 'cuda': torch.cuda.synchronize()
         infer_time = (time.time() - t1) * 10
     
-
     preds, trues = [], []
     with torch.no_grad():
         for xb, yb in te_loader:
@@ -144,27 +136,38 @@ for name, get_model_fn in models_dict.items():
     results[name] = {'trues': tr, 'preds': pr}
 
 
-print("\n[DenseNet161 최종 Classification Report]")
-best_tr, best_pr = results['DenseNet161']['trues'], results['DenseNet161']['preds']
-print(classification_report(best_tr, best_pr, digits=3))
-
-cm = confusion_matrix(best_tr, best_pr)
+print("\n[각 모델별 혼동행렬(Confusion Matrix) 이미지 생성 및 분석]")
 L = ['A', 'B', 'C', 'D', 'E']
-fig, ax = plt.subplots(figsize=(5, 4.5))
-im = ax.imshow(cm, cmap='Blues')
-ax.set_xticks(range(5)); ax.set_yticks(range(5))
-ax.set_xticklabels(L); ax.set_yticklabels(L)
-for i in range(5):
-    for j in range(5):
-        ax.text(j, i, cm[i, j], ha='center', va='center')
-ax.set_xlabel('Predicted'); ax.set_ylabel('True')
-plt.colorbar(im); plt.tight_layout()
-plt.savefig('confusion.png', dpi=120)
-print("-> 'confusion.png' 이미지 저장 완료")
 
-np.fill_diagonal(cm, 0)
-max_err_idx = np.unravel_index(cm.argmax(), cm.shape)
-print(f"-> 최대 오류 쌍 발견: 실제 '{L[max_err_idx[0]]}' 클래스를 '{L[max_err_idx[1]]}'(으)로 가장 많이 오분류함.")
+for model_name, res in results.items():
+    tr, pr = res['trues'], res['preds']
+    
+    print(f"\n[{model_name} Classification Report]")
+    print(classification_report(tr, pr, digits=3))
+    
+    cm = confusion_matrix(tr, pr)
+    fig, ax = plt.subplots(figsize=(5, 4.5))
+    im = ax.imshow(cm, cmap='Blues')
+    ax.set_xticks(range(5)); ax.set_yticks(range(5))
+    ax.set_xticklabels(L); ax.set_yticklabels(L)
+    
+    for i in range(5):
+        for j in range(5):
+            ax.text(j, i, cm[i, j], ha='center', va='center')
+            
+    ax.set_xlabel('Predicted'); ax.set_ylabel('True')
+    plt.colorbar(im); plt.tight_layout()
+    
+
+    filename = f"confusion_{model_name.replace(' ', '_')}.png"
+    plt.savefig(filename, dpi=120)
+    plt.close(fig) 
+    print(f"-> '{filename}' 이미지 저장 완료")
+    
+
+    np.fill_diagonal(cm, 0)
+    max_err_idx = np.unravel_index(cm.argmax(), cm.shape)
+    print(f"-> {model_name} 최대 오류 쌍: 실제 '{L[max_err_idx[0]]}' 클래스를 '{L[max_err_idx[1]]}'(으)로 가장 많이 오분류함.")
 
 
 print("\n[5-Fold 교차검증 진행]")
